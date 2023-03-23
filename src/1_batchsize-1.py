@@ -6,8 +6,6 @@ import time
 
 from datasets import load_dataset
 from lightning import Fabric
-import matplotlib.pyplot as plt
-import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 import torchmetrics
@@ -20,34 +18,36 @@ from local_dataset_utilities import IMDBDataset
 
 
 def tokenize_text(batch):
-    return tokenizer(batch["text"], truncation=True, padding=True, max_length=512)
+    return tokenizer(batch["text"], truncation=True, padding=True, max_length=1024)
 
 
 def train(num_epochs, model, optimizer, train_loader, val_loader, fabric):
 
     for epoch in range(num_epochs):
-        train_acc = torchmetrics.Accuracy(task="multiclass", num_classes=2).to(fabric.device)
+        train_acc = torchmetrics.Accuracy(
+            task="multiclass", num_classes=2).to(fabric.device)
 
-        model.train()
         for batch_idx, batch in enumerate(train_loader):
             model.train()
 
             ### FORWARD AND BACK PROP   
-            outputs = model(batch["input_ids"], attention_mask=batch["attention_mask"], labels=batch["label"]) 
-            
-            optimizer.zero_grad()
-            
+            outputs = model(
+                batch["input_ids"],
+                attention_mask=batch["attention_mask"],
+                labels=batch["label"]
+            ) 
+
             fabric.backward(outputs["loss"])
 
-            outputs["loss"] = outputs["loss"]
-
             ### UPDATE MODEL PARAMETERS
-
             optimizer.step()
-            
+            optimizer.zero_grad()
+
             ### LOGGING
             if not batch_idx % 300:
-                print(f"Epoch: {epoch+1:04d}/{num_epochs:04d} | Batch {batch_idx:04d}/{len(train_loader):04d} | Loss: {outputs['loss']:.4f}")
+                print(f"Epoch: {epoch+1:04d}/{num_epochs:04d} "
+                      f"| Batch {batch_idx:04d}/{len(train_loader):04d} "
+                      f"| Loss: {outputs['loss']:.4f}")
 
             model.eval()
             with torch.no_grad():
@@ -59,11 +59,18 @@ def train(num_epochs, model, optimizer, train_loader, val_loader, fabric):
         with torch.no_grad():
             val_acc = torchmetrics.Accuracy(task="multiclass", num_classes=2).to(fabric.device)
             for batch in val_loader:
-                outputs = model(batch["input_ids"], attention_mask=batch["attention_mask"], labels=batch["label"])
+                outputs = model(
+                    batch["input_ids"],
+                    attention_mask=batch["attention_mask"],
+                    labels=batch["label"]
+                )
                 predicted_labels = torch.argmax(outputs["logits"], 1)
                 val_acc.update(predicted_labels, batch["label"])
 
-            print(f"Epoch: {epoch+1:04d}/{num_epochs:04d} | Train acc.: {train_acc.compute()*100:.2f}% | Val acc.: {val_acc.compute()*100:.2f}%")
+            print(f"Epoch: {epoch+1:04d}/{num_epochs:04d} "
+                  f"| Train acc.: {train_acc.compute()*100:.2f}% "
+                  f"| Val acc.: {val_acc.compute()*100:.2f}%"
+                  )
             train_acc.reset(), val_acc.reset()
 
 
@@ -97,7 +104,7 @@ if __name__ == "__main__":
     ### 2 Tokenization and Numericalization
     #########################################
 
-    tokenizer = AutoTokenizer.from_pretrained("bigscience/bloom-560m", max_length=512)
+    tokenizer = AutoTokenizer.from_pretrained("bigscience/bloom-560m", max_length=1024)
     print("Tokenizer input max length:", tokenizer.model_max_length, flush=True)
     print("Tokenizer vocabulary size:", tokenizer.vocab_size, flush=True)
 
@@ -150,7 +157,8 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam(model.parameters(), lr=5e-5)
 
     model, optimizer = fabric.setup(model, optimizer)
-    train_loader, val_loader, test_loader = fabric.setup_dataloaders(train_loader, val_loader, test_loader)
+    train_loader, val_loader, test_loader = fabric.setup_dataloaders(
+        train_loader, val_loader, test_loader)
 
     #########################################
     ### 5 Finetuning
@@ -174,7 +182,11 @@ if __name__ == "__main__":
         model.eval()
         test_acc = torchmetrics.Accuracy(task="multiclass", num_classes=2).to(fabric.device)
         for batch in test_loader:
-            outputs = model(batch["input_ids"], attention_mask=batch["attention_mask"], labels=batch["label"])
+            outputs = model(
+                batch["input_ids"],
+                attention_mask=batch["attention_mask"],
+                labels=batch["label"]
+            )
             predicted_labels = torch.argmax(outputs["logits"], 1)
             test_acc.update(predicted_labels, batch["label"])
 
